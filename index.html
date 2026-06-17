@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Algebra Calculator</title>
+<style>
+:root {
+  --bg: #F5F0E8;
+  --panel: #EDE8DC;
+  --text: #000000;
+  --muted: #555555;
+  --accent: #8B4513;
+  --save: #5A7A3A;
+  --neutral: #A09070;
+  --canvas: #E8E0D0;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: Georgia, serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  gap: 20px;
+}
+.wrap {
+  width: 720px;
+  max-width: 100%;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: 4px 6px 24px rgba(0,0,0,0.18);
+  overflow: hidden;
+}
+.header {
+  background: var(--accent);
+  color: #fff;
+  text-align: center;
+  padding: 14px 16px;
+  font-size: 20px;
+  letter-spacing: 0.5px;
+}
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  background: var(--canvas);
+  border-bottom: 2px solid var(--accent);
+}
+.tab {
+  flex: 1 1 auto;
+  text-align: center;
+  padding: 10px 8px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 14px;
+  border-right: 1px solid var(--neutral);
+}
+.tab:last-child { border-right: none; }
+.tab.active {
+  background: var(--accent);
+  color: #fff;
+  font-weight: bold;
+}
+.panel { display: none; padding: 20px; }
+.panel.active { display: block; }
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+label {
+  font-size: 14px;
+  color: var(--muted);
+  min-width: 90px;
+}
+input, select {
+  font-family: Georgia, serif;
+  background: var(--canvas);
+  color: var(--text);
+  border: 1px solid var(--neutral);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 14px;
+  flex: 1;
+  min-width: 80px;
+}
+button {
+  font-family: Georgia, serif;
+  background: var(--save);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 18px;
+  font-size: 14px;
+  cursor: pointer;
+}
+button:hover { opacity: 0.9; }
+.output {
+  margin-top: 14px;
+  background: var(--canvas);
+  border: 1px solid var(--neutral);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 14px;
+  min-height: 40px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+}
+.hint { font-size: 12px; color: var(--muted); margin-top: -4px; margin-bottom: 8px; }
+.error { color: #8B2E2E; }
+.eq-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.eq-row input { width: 70px; flex: none; }
+.eq-row span { font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="header">Algebra Calculator</div>
+  <div class="tabs" id="tabs"></div>
+  <div id="panels"></div>
+</div>
+
+<script>
+const sections = [
+  { id: 'linear', label: 'Linear Equation' },
+  { id: 'quadratic', label: 'Quadratic Equation' },
+  { id: 'system2', label: '2×2 System' },
+  { id: 'system3', label: '3×3 System' },
+  { id: 'poly', label: 'Polynomial Ops' },
+  { id: 'factor', label: 'Factor Quadratic' },
+  { id: 'eval', label: 'Evaluate Expression' },
+];
+
+const tabsEl = document.getElementById('tabs');
+const panelsEl = document.getElementById('panels');
+
+sections.forEach((s, i) => {
+  const t = document.createElement('div');
+  t.className = 'tab' + (i === 0 ? ' active' : '');
+  t.textContent = s.label;
+  t.onclick = () => selectTab(s.id);
+  t.dataset.id = s.id;
+  tabsEl.appendChild(t);
+});
+
+function selectTab(id) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.id === id));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + id));
+}
+
+function makePanel(id, active, html) {
+  const div = document.createElement('div');
+  div.className = 'panel' + (active ? ' active' : '');
+  div.id = 'panel-' + id;
+  div.innerHTML = html;
+  panelsEl.appendChild(div);
+}
+
+function out(id, text, isError) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.classList.toggle('error', !!isError);
+}
+
+function num(id, name) {
+  const v = +document.getElementById(id).value;
+  if (!Number.isFinite(v)) throw new Error(name + ' must be a number.');
+  return v;
+}
+
+function fmt(n) {
+  if (Math.abs(n) < 1e-9) n = 0;
+  return Number.isInteger(n) ? n.toString() : n.toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function fmtSigned(n) {
+  return (n >= 0 ? '+ ' : '- ') + fmt(Math.abs(n));
+}
+
+// ===================== LINEAR EQUATION: ax + b = cx + d =====================
+makePanel('linear', true, `
+  <div class="hint">Solve ax + b = cx + d</div>
+  <div class="eq-row">
+    <input id="lin-a" type="number" value="2"><span>x +</span>
+    <input id="lin-b" type="number" value="3"><span>=</span>
+    <input id="lin-c" type="number" value="0"><span>x +</span>
+    <input id="lin-d" type="number" value="11">
+  </div>
+  <button onclick="runLinear()">Solve</button>
+  <div class="output" id="lin-out"></div>
+`);
+function runLinear() {
+  try {
+    const a = num('lin-a', 'a'), b = num('lin-b', 'b'), c = num('lin-c', 'c'), d = num('lin-d', 'd');
+    const A = a - c, B = d - b;
+    if (A === 0) {
+      out('lin-out', B === 0 ? 'Infinitely many solutions (identity).' : 'No solution (contradiction).');
+    } else {
+      out('lin-out', 'x = ' + fmt(B / A));
+    }
+  } catch (e) { out('lin-out', e.message, true); }
+}
+
+// ===================== QUADRATIC EQUATION: ax^2 + bx + c = 0 =====================
+makePanel('quadratic', false, `
+  <div class="hint">Solve ax² + bx + c = 0</div>
+  <div class="eq-row">
+    <input id="quad-a" type="number" value="1"><span>x² +</span>
+    <input id="quad-b" type="number" value="-3"><span>x +</span>
+    <input id="quad-c" type="number" value="2"><span>= 0</span>
+  </div>
+  <button onclick="runQuadratic()">Solve</button>
+  <div class="output" id="quad-out"></div>
+`);
+function runQuadratic() {
+  try {
+    const a = num('quad-a', 'a'), b = num('quad-b', 'b'), c = num('quad-c', 'c');
+    if (a === 0) {
+      if (b === 0) { out('quad-out', c === 0 ? 'Infinitely many solutions.' : 'No solution.'); return; }
+      out('quad-out', 'Not quadratic (a = 0). Linear solution: x = ' + fmt(-c / b));
+      return;
+    }
+    const disc = b * b - 4 * a * c;
+    const vertexX = -b / (2 * a);
+    const vertexY = a * vertexX * vertexX + b * vertexX + c;
+    let roots;
+    if (disc > 0) {
+      const sq = Math.sqrt(disc);
+      roots = 'Two real roots:\nx₁ = ' + fmt((-b + sq) / (2 * a)) + '\nx₂ = ' + fmt((-b - sq) / (2 * a));
+    } else if (disc === 0) {
+      roots = 'One repeated real root:\nx = ' + fmt(-b / (2 * a));
+    } else {
+      const sq = Math.sqrt(-disc);
+      const re = -b / (2 * a), im = sq / (2 * a);
+      roots = 'Two complex roots:\nx₁ = ' + fmt(re) + ' + ' + fmt(im) + 'i\nx₂ = ' + fmt(re) + ' - ' + fmt(im) + 'i';
+    }
+    out('quad-out', roots + '\n\nDiscriminant = ' + fmt(disc) + '\nVertex = (' + fmt(vertexX) + ', ' + fmt(vertexY) + ')');
+  } catch (e) { out('quad-out', e.message, true); }
+}
+
+// ===================== 2x2 SYSTEM (Cramer's rule) =====================
+makePanel('system2', false, `
+  <div class="hint">Solve a₁x + b₁y = c₁ and a₂x + b₂y = c₂</div>
+  <div class="eq-row">
+    <input id="s2-a1" type="number" value="2"><span>x +</span>
+    <input id="s2-b1" type="number" value="3"><span>y =</span>
+    <input id="s2-c1" type="number" value="8">
+  </div>
+  <div class="eq-row">
+    <input id="s2-a2" type="number" value="1"><span>x +</span>
+    <input id="s2-b2" type="number" value="-1"><span>y =</span>
+    <input id="s2-c2" type="number" value="1">
+  </div>
+  <button onclick="runSystem2()">Solve</button>
+  <div class="output" id="s2-out"></div>
+`);
+function runSystem2() {
+  try {
+    const a1 = num('s2-a1','a1'), b1 = num('s2-b1','b1'), c1 = num('s2-c1','c1');
+    const a2 = num('s2-a2','a2'), b2 = num('s2-b2','b2'), c2 = num('s2-c2','c2');
+    const det = a1 * b2 - a2 * b1;
+    if (det === 0) {
+      out('s2-out', 'No unique solution (lines are parallel or identical).');
+      return;
+    }
+    const x = (c1 * b2 - c2 * b1) / det;
+    const y = (a1 * c2 - a2 * c1) / det;
+    out('s2-out', 'x = ' + fmt(x) + '\ny = ' + fmt(y));
+  } catch (e) { out('s2-out', e.message, true); }
+}
+
+// ===================== 3x3 SYSTEM (Cramer's rule) =====================
+makePanel('system3', false, `
+  <div class="hint">Solve a₁x + b₁y + c₁z = d₁, etc. (3 equations, 3 unknowns)</div>
+  <div class="eq-row">
+    <input id="s3-a1" type="number" value="1"><span>x +</span>
+    <input id="s3-b1" type="number" value="1"><span>y +</span>
+    <input id="s3-c1" type="number" value="1"><span>z =</span>
+    <input id="s3-d1" type="number" value="6">
+  </div>
+  <div class="eq-row">
+    <input id="s3-a2" type="number" value="0"><span>x +</span>
+    <input id="s3-b2" type="number" value="2"><span>y +</span>
+    <input id="s3-c2" type="number" value="5"><span>z =</span>
+    <input id="s3-d2" type="number" value="-4">
+  </div>
+  <div class="eq-row">
+    <input id="s3-a3" type="number" value="2"><span>x +</span>
+    <input id="s3-b3" type="number" value="5"><span>y +</span>
+    <input id="s3-c3" type="number" value="-1"><span>z =</span>
+    <input id="s3-d3" type="number" value="27">
+  </div>
+  <button onclick="runSystem3()">Solve</button>
+  <div class="output" id="s3-out"></div>
+`);
+function det3(m) {
+  return m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1])
+       - m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0])
+       + m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0]);
+}
+function runSystem3() {
+  try {
+    const a1=num('s3-a1','a1'), b1=num('s3-b1','b1'), c1=num('s3-c1','c1'), d1=num('s3-d1','d1');
+    const a2=num('s3-a2','a2'), b2=num('s3-b2','b2'), c2=num('s3-c2','c2'), d2=num('s3-d2','d2');
+    const a3=num('s3-a3','a3'), b3=num('s3-b3','b3'), c3=num('s3-c3','c3'), d3=num('s3-d3','d3');
+    const M = [[a1,b1,c1],[a2,b2,c2],[a3,b3,c3]];
+    const D = det3(M);
+    if (D === 0) { out('s3-out', 'No unique solution (determinant is zero).'); return; }
+    const Mx = [[d1,b1,c1],[d2,b2,c2],[d3,b3,c3]];
+    const My = [[a1,d1,c1],[a2,d2,c2],[a3,d3,c3]];
+    const Mz = [[a1,b1,d1],[a2,b2,d2],[a3,b3,d3]];
+    const x = det3(Mx)/D, y = det3(My)/D, z = det3(Mz)/D;
+    out('s3-out', 'x = ' + fmt(x) + '\ny = ' + fmt(y) + '\nz = ' + fmt(z));
+  } catch (e) { out('s3-out', e.message, true); }
+}
+
+// ===================== POLYNOMIAL OPERATIONS =====================
+makePanel('poly', false, `
+  <div class="hint">Enter coefficients highest-degree first, comma-separated (e.g. "1,-3,2" for x² − 3x + 2)</div>
+  <div class="row"><label>Polynomial A</label><input id="poly-a" type="text" value="1,2,3"></div>
+  <div class="row"><label>Polynomial B</label><input id="poly-b" type="text" value="2,-1"></div>
+  <div class="row"><label>Operation</label>
+    <select id="poly-op">
+      <option value="add">Add</option>
+      <option value="sub">Subtract (A − B)</option>
+      <option value="mul">Multiply</option>
+    </select>
+  </div>
+  <button onclick="runPoly()">Calculate</button>
+  <div class="output" id="poly-out"></div>
+`);
+function parsePoly(str) {
+  const parts = str.split(',').map(s => s.trim()).filter(s => s.length);
+  if (!parts.length) throw new Error('Enter at least one coefficient.');
+  const coeffs = parts.map(p => { const v = +p; if (!Number.isFinite(v)) throw new Error('"' + p + '" is not a valid coefficient.'); return v; });
+  return coeffs;
+}
+function polyToString(coeffs) {
+  const n = coeffs.length - 1;
+  const terms = [];
+  coeffs.forEach((c, i) => {
+    if (c === 0) return;
+    const deg = n - i;
+    let term = (terms.length === 0 ? fmt(c) : fmtSigned(c));
+    if (deg > 0) term += (Math.abs(c) === 1 ? 'x' : 'x') ;
+    if (deg > 1) term += '^' + deg;
+    if (deg > 0 && Math.abs(c) === 1) {
+      term = (c < 0 && terms.length === 0 ? '-x' : (terms.length === 0 ? 'x' : (c < 0 ? '- x' : '+ x'))) + (deg > 1 ? '^' + deg : '');
+    }
+    terms.push(term);
+  });
+  return terms.length ? terms.join(' ') : '0';
+}
+function runPoly() {
+  try {
+    const a = parsePoly(document.getElementById('poly-a').value);
+    const b = parsePoly(document.getElementById('poly-b').value);
+    const op = document.getElementById('poly-op').value;
+    let result;
+    if (op === 'mul') {
+      result = new Array(a.length + b.length - 1).fill(0);
+      for (let i = 0; i < a.length; i++)
+        for (let j = 0; j < b.length; j++)
+          result[i + j] += a[i] * b[j];
+    } else {
+      const len = Math.max(a.length, b.length);
+      const pa = new Array(len - a.length).fill(0).concat(a);
+      const pb = new Array(len - b.length).fill(0).concat(b);
+      result = pa.map((v, i) => op === 'add' ? v + pb[i] : v - pb[i]);
+    }
+    while (result.length > 1 && result[0] === 0) result.shift();
+    out('poly-out', polyToString(result) + '\n\nCoefficients: [' + result.map(fmt).join(', ') + ']');
+  } catch (e) { out('poly-out', e.message, true); }
+}
+
+// ===================== FACTOR QUADRATIC =====================
+makePanel('factor', false, `
+  <div class="hint">Factor ax² + bx + c over the rationals (when possible)</div>
+  <div class="eq-row">
+    <input id="fac-a" type="number" value="2"><span>x² +</span>
+    <input id="fac-b" type="number" value="7"><span>x +</span>
+    <input id="fac-c" type="number" value="3"><span>= 0</span>
+  </div>
+  <button onclick="runFactor()">Factor</button>
+  <div class="output" id="fac-out"></div>
+`);
+function gcd(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b]; } return a; }
+function runFactor() {
+  try {
+    let a = num('fac-a', 'a'), b = num('fac-b', 'b'), c = num('fac-c', 'c');
+    if (a === 0) throw new Error('a must be nonzero for a quadratic.');
+    const disc = b * b - 4 * a * c;
+    if (disc < 0) { out('fac-out', 'No real factorization (discriminant < 0). Roots are complex.'); return; }
+    const sq = Math.sqrt(disc);
+    if (Math.abs(sq - Math.round(sq)) > 1e-9) {
+      out('fac-out', 'Roots are irrational — no clean rational factorization.\nx = (' + fmtSigned(-b).trim() + ' ± √' + fmt(disc) + ') / ' + fmt(2 * a));
+      return;
+    }
+    const sqi = Math.round(sq);
+    let p = -b + sqi, q = -b - sqi, r = 2 * a;
+    // roots: p/r and q/r, reduce each fraction
+    function reduceFrac(num, den) {
+      if (den < 0) { num = -num; den = -den; }
+      const g = gcd(num, den) || 1;
+      return [num / g, den / g];
+    }
+    const [n1, d1] = reduceFrac(p, r);
+    const [n2, d2] = reduceFrac(q, r);
+    const root1 = n1 / d1, root2 = n2 / d2;
+    const factorTerm = (d, n) => d === 1 ? (n === 0 ? 'x' : 'x ' + fmtSigned(-n)) : (d + 'x ' + fmtSigned(-n));
+    out('fac-out',
+      fmt(a) + '(' + factorTerm(d1, n1) + ')(' + factorTerm(d2, n2) + ')' +
+      '\n\nRoots: x₁ = ' + fmt(root1) + ', x₂ = ' + fmt(root2));
+  } catch (e) { out('fac-out', e.message, true); }
+}
+
+// ===================== EVALUATE EXPRESSION =====================
+makePanel('eval', false, `
+  <div class="hint">Enter a polynomial expression in x, e.g. "2*x^2 - 3*x + 5"</div>
+  <div class="row"><label>Expression</label><input id="ev-expr" type="text" value="2*x^2 - 3*x + 5"></div>
+  <div class="row"><label>x =</label><input id="ev-x" type="number" value="4"></div>
+  <button onclick="runEval()">Evaluate</button>
+  <div class="output" id="ev-out"></div>
+`);
+function runEval() {
+  try {
+    const expr = document.getElementById('ev-expr').value;
+    const xVal = num('ev-x', 'x');
+    if (!/^[0-9x+\-*/^().\s]+$/i.test(expr)) throw new Error('Only numbers, x, + - * / ^ ( ) are allowed.');
+    const jsExpr = expr
+      .replace(/\^/g, '**')
+      .replace(/x/gi, '(' + xVal + ')');
+    // eslint-disable-next-line no-new-func
+    const result = Function('"use strict"; return (' + jsExpr + ');')();
+    if (!Number.isFinite(result)) throw new Error('Expression did not evaluate to a finite number.');
+    out('ev-out', expr + '  at  x = ' + fmt(xVal) + '\n= ' + fmt(result));
+  } catch (e) { out('ev-out', 'Invalid expression: ' + e.message, true); }
+}
+
+runLinear();
+</script>
+</body>
+</html>
